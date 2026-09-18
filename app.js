@@ -20,33 +20,33 @@ async function getHtmlForApkMirror(url) {
 async function getDownloadPageUrl(downloadPageUrl) {
     const html = await getHtmlForApkMirror(downloadPageUrl);
     const $ = load(html);
-    
+
     const downloadUrl = $(`a.downloadButton`).attr("href");
-    
+
     if (!downloadUrl) {
         throw new Error("Could not find download page url");
     }
-    
+
     return downloadUrl;
 }
 
 async function getDirectDownloadUrl(downloadPageUrl) {
     const html = await getHtmlForApkMirror(downloadPageUrl);
     const $ = load(html);
-    
+
     const downloadUrl = $(`.card-with-tabs a[href]`).attr("href");
-    
+
     if (!downloadUrl) {
         throw new Error("Could not find direct download url");
     }
-    
+
     return downloadUrl;
 }
 
 function extractVersion(input) {
     const versionRegex = /\b\d+(\.\d+)+(-\S+)?\b/;
     const match = input.match(versionRegex);
-    
+
     return match ? match[0] : undefined;
 }
 
@@ -54,12 +54,12 @@ function extractMinSdk(input) {
     // Extract Android version (e.g., "Android 11+", "Android 12", "Android 13+")
     const androidRegex = /Android\s+(\d+(?:\.\d+)?L?)\+?/i;
     const match = input.match(androidRegex);
-    
+
     if (match && match[1]) {
         const versionStr = match[1];
         return versionStr;
     }
-    
+
     return null;
 }
 
@@ -101,12 +101,12 @@ function versionToApiLevel(versionStr) {
         '1.1': 2,
         '1.0': 1
     };
-    
+
     // Try exact match first
     if (versionMap[versionStr]) {
         return versionMap[versionStr];
     }
-    
+
     // Try with first two parts (e.g., "8.1" from "8.1.0")
     const parts = versionStr.split('.');
     if (parts.length >= 2) {
@@ -115,24 +115,24 @@ function versionToApiLevel(versionStr) {
             return versionMap[majorMinor];
         }
     }
-    
+
     // Try with just major version (e.g., "8" from "8.0.0")
     const major = parts[0];
     if (versionMap[major]) {
         return versionMap[major];
     }
-    
+
     return null;
 }
 
 async function getStableLatestVersion(org, repo, versionPattern = null, includePrerelease = false) {
     const apkmUrl = `${BASE_URL}/apk/${org}/${repo}`;
     debugLog(`[DEBUG] Fetching versions from: ${apkmUrl}`);
-    
+
     const response = await fetchHeaders(apkmUrl);
     const html = await response.text();
     const $ = load(html);
-    
+
     const versions = $(
         `#primary > div.listWidget.p-relative > div > div.appRow > div > div:nth-child(2) > div > h5 > a`
     )
@@ -141,11 +141,11 @@ async function getStableLatestVersion(org, repo, versionPattern = null, includeP
         text: $(v).text(),
         url: $(v).attr("href")
     }));
-    
+
     debugLog(`[DEBUG] Found versions (all): ${versions.length}`, versions.map(v => v.text));
-    
+
     let filteredVersions = versions;
-    
+
     // Filter alpha/beta only if includePrerelease is false
     if (!includePrerelease) {
         filteredVersions = filteredVersions.filter(
@@ -155,19 +155,19 @@ async function getStableLatestVersion(org, repo, versionPattern = null, includeP
     } else {
         debugLog(`[DEBUG] Including prerelease versions (alpha/beta): ${filteredVersions.length}`);
     }
-    
+
     if (versionPattern) {
         const regex = new RegExp(versionPattern);
         filteredVersions = filteredVersions.filter((v) => regex.test(v.text));
         debugLog(`[DEBUG] Filtered by pattern '${versionPattern}': ${filteredVersions.length}`, filteredVersions.map(v => v.text));
     }
-    
+
     const stableVersion = filteredVersions[0];
-    
+
     if (!stableVersion) {
         throw new Error("Could not find version matching pattern: " + (versionPattern || "any"));
     }
-    
+
     const extractedVersion = extractVersion(stableVersion.text);
     const minSdkVersion = extractMinSdk(stableVersion.text);
     const minSdkApiLevel = minSdkVersion ? versionToApiLevel(minSdkVersion) : null;
@@ -198,67 +198,68 @@ export async function getVariants(org, repo, versionOrUrl, bundle) {
             "-"
         )}-release`;
     }
-    
+
     debugLog(`[DEBUG] Fetching variants from: ${apkmUrl}`);
     debugLog(`[DEBUG] Looking for: ${bundle ? 'BUNDLE' : 'APK'}`);
-    
+
     const response = await fetchHeaders(apkmUrl);
     const html = await response.text();
     const $ = load(html);
-    
+
     var rows;
     if (bundle) {
         rows = $('.variants-table .table-row:has(span.apkm-badge:contains("BUNDLE"))');
     } else {
         rows = $('.variants-table .table-row:has(span.apkm-badge:contains("APK"))');
     }
-    
+
     debugLog(`[DEBUG] Found rows: ${rows.length}`);
-    
+
     const parsedData = [];
-    
+
     rows.each((_index, row) => {
         const columns = $(row).find(".table-cell");
-        
+
         // Column 0: Version (extract from link text)
-        const versionLink = $(columns[0]).find("a");
-        const version = versionLink.text().trim();
-        
+        const versionLink = $(columns[0]).find("a").first();
+        const versionText = versionLink.text().trim();
+        const version = extractVersion(versionText) || versionText;
+
         // Column 1: Architecture
         const arch = $(columns[1]).text().trim();
-        
+
         // Column 2: Android version/Variant
         const variant = $(columns[2]).text().trim();
-        
+
         // Column 3: DPI
         const dpi = $(columns[3]).text().trim();
-        
-        // Column 4: Download URL
-        const url = $(columns[4]).find("a").attr("href");
-        
+
+        // APKMirror may place the download link in the version cell.
+        const url = $(columns[4]).find("a").attr("href") || versionLink.attr("href");
+
         // Last column: Extended details (signature, date)
         const lastColumn = columns[columns.length - 1];
         const extendedCell = $(lastColumn);
-        
+
         // Extract signature from tooltip
         const signatureSpan = extendedCell.find('.signature');
         const signatureTooltip = signatureSpan.attr('data-apkm-tooltip') || '';
         const signatureMatch = signatureTooltip.match(/Signature: ([a-f0-9]+)/i);
         const signature = signatureMatch ? signatureMatch[1] : signatureSpan.text().trim();
-        
+
         // Extract date
         const dateSpan = extendedCell.find('.dateyear_utc');
         const dateText = dateSpan.attr('data-utcdate') || dateSpan.text().trim();
-        
+
         if (!variant || !arch || !version || !dpi || !url) {
             debugLog(`[DEBUG] Skipped incomplete row: variant=${variant}, arch=${arch}, version=${version}, dpi=${dpi}, url=${url}`);
             return;
         }
-        
+
         // Extract SDK version and API level from variant
         const variantMinSdk = extractMinSdk(variant);
         const variantMinSdkApiLevel = variantMinSdk ? versionToApiLevel(variantMinSdk) : null;
-        
+
         const rowData = {
             variant,
             arch,
@@ -274,7 +275,7 @@ export async function getVariants(org, repo, versionOrUrl, bundle) {
         debugLog(`[DEBUG] Added variant: ${variant} (${arch}, ${dpi}) - API ${variantMinSdkApiLevel} - ${signature} - ${dateText}`);
         parsedData.push(rowData);
     });
-    
+
     debugLog(`[DEBUG] Total parsed variants: ${parsedData.length}`);
     return parsedData;
 }
@@ -302,7 +303,7 @@ async function downloadAPK(url, name, overwrite = true) {
 
     const body = response.body;
     let isAPK = filename.endsWith('.apk') || filename.endsWith('.apkm');
-    
+
     if (body != null && isAPK) {
         const fileStream = createWriteStream(filename, { flags: "w" });
         await finished(Readable.fromWeb(body).pipe(fileStream));
@@ -316,12 +317,15 @@ const org = core.getInput('org', { required: true });
 const repo = core.getInput('repo', { required: true });
 const version = core.getInput('version');
 const versionPattern = core.getInput('versionPattern');
-const includePrerelease = core.getBooleanInput('includePrerelease');
-const bundle = core.getBooleanInput('bundle');
+const includePrereleaseInput = core.getInput('includePrerelease');
+const bundleInput = core.getInput('bundle');
 const archFilter = core.getInput('arch');
 const dpiFilter = core.getInput('dpi');
 const name = core.getInput('filename');
-const overwrite = core.getBooleanInput('overwrite') ?? true;
+const overwriteInput = core.getInput('overwrite');
+const includePrerelease = includePrereleaseInput ? core.getBooleanInput('includePrerelease') : false;
+const bundle = bundleInput ? core.getBooleanInput('bundle') : false;
+const overwrite = overwriteInput ? core.getBooleanInput('overwrite') : true;
 
 console.log(`\n[INFO] Starting download process...`);
 console.log(`[INFO] Org: ${org}, Repo: ${repo}`);
@@ -340,7 +344,7 @@ if (selectedMinSdkVersion) {
 }
 debugLog('');
 
-const variants = releaseUrl 
+const variants = releaseUrl
     ? await getVariants(org, repo, releaseUrl)
     : await getVariantsWithVersion(org, repo, selectedVersionStr, bundle);
 
@@ -352,7 +356,7 @@ if (!variants || variants.length === 0) {
 let selectedVariant = variants[0];
 if (archFilter || dpiFilter) {
     let filtered = variants;
-    
+
         if (archFilter) {
         filtered = filtered.filter(v => v.arch.toLowerCase() === archFilter.toLowerCase());
         if (filtered.length === 0) {
@@ -360,7 +364,7 @@ if (archFilter || dpiFilter) {
         }
         debugLog(`[DEBUG] Filtered by arch '${archFilter}': ${filtered.length} variant(s)`);
     }
-    
+
     if (dpiFilter) {
         filtered = filtered.filter(v => v.dpi.toLowerCase() === dpiFilter.toLowerCase());
         if (filtered.length === 0) {
@@ -368,7 +372,7 @@ if (archFilter || dpiFilter) {
         }
         debugLog(`[DEBUG] Filtered by dpi '${dpiFilter}': ${filtered.length} variant(s)`);
     }
-    
+
     selectedVariant = filtered[0];
 }
 const variantMinSdkApiLevel = selectedVariant.minSdkApiLevel || selectedMinSdkApiLevel;
@@ -400,7 +404,7 @@ if (finalFilename) {
         .replace(/\$\{minSdk\}/g, variantMinSdkApiLevel)
         .replace(/\$\{signature\}/g, selectedVariant.signature || '')
         .replace(/\$\{date\}/g, selectedVariant.date || '');
-    
+
     debugLog(`[DEBUG] Final filename: ${finalFilename}`);
 }
 
