@@ -1,4 +1,4 @@
-name: Download APKs
+name: Download APKs from APKMirror
 description: 'Download APK from APKMirror'
 inputs:
     org:
