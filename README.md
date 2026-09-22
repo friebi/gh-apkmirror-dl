@@ -13,6 +13,7 @@ This GitHub Action allows you to download APK files from APKMirror.
 
 Credits to [@tanishqmanuja](https://github.com/tanishqmanuja) for the initial apkmirror scraping code.
 Original action by [@Yakov5776](https://github.com/Yakov5776).
+Updates by [@Kingsman44](https://github.com/Kingsman44).
 
 ---
 
@@ -20,7 +21,7 @@ Original action by [@Yakov5776](https://github.com/Yakov5776).
 
 ### Comprehensive Example (All Features)
 ```yml
-- uses: Kingsman44/gh-apkmirror-dl@v2
+- uses: friebi/gh-apkmirror-dl@v2.1
   id: download
   with:
     org: 'google-inc'
@@ -92,6 +93,7 @@ Use these in the `filename` parameter:
 
 ## Version History
 
+- **v2.1** - Adjusted to APKMirror's changed web interface
 - **v2.0** - Major update with metadata extraction, filtering, and template filenames
   - Extract signature, date, API level, architecture, DPI
   - Filter variants by architecture and DPI
